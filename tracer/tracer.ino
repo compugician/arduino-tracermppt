@@ -5,7 +5,7 @@
 TracerMPPT tracer(2,3); //parameters are rx, tx pins, in that order.
   
 void setup() {
-  Serial.begin(57600);
+  Serial.begin(115200);
   Serial.println("Welcome.");
   tracer.begin();
   Serial.println("Initialized.");
@@ -98,6 +98,19 @@ void printData(TracerData* data) {
   }
 }
 
+void printErrorCounts() {
+  uint16_t* errorCounts = tracer.getErrorCounts();
+  uint8_t minErrorValue = tracer.getMinErrorValue();
+  Serial.println("Error counts:");
+  for (int i = 0 ; i<tracer.getTotalNumberOfErrorTypes(); i++) {
+    Serial.print(minErrorValue+i,DEC);
+    Serial.print(" ");
+    Serial.println(errorCounts[i],DEC);
+  }
+  Serial.print("# of Reads: ");
+  Serial.println(tracer.getTotalNumberOfReads());
+}
+
 void loop() {
   
   TracerData data;
@@ -106,7 +119,7 @@ void loop() {
   tracer.getRealtimeData(&data);
   printData(&data);  
   
-  delay(2500);
+  delay(5);
   
   Serial.println("SETTING LOAD ---- OFF ----");
   tracer.setLoad(false, &ctrlResult);
@@ -115,10 +128,14 @@ void loop() {
   tracer.getRealtimeData(&data);
   printData(&data);
    
-  delay(1500);
+  delay(200);
+  delay(random(50,100));
   
   Serial.println("SETTING LOAD **** ON ****");
   tracer.setLoad(true, &ctrlResult);
   printResult(&ctrlResult);
+
+  printErrorCounts();
+  
 }
 

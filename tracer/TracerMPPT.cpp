@@ -101,7 +101,7 @@ char* TracerMPPT::_errorToString(uint8_t err) {
   if (ERROR_MISSING_CRC2==err) return "ERROR_MISSING_CRC2";
   if (ERROR_MISSING_CRC1==err) return "ERROR_MISSING_CRC1";
   if (ERROR_INCOMPLETE_ARGS==err) return "ERROR_INCOMPLETE_ARGS";
-  if (ERROR_MISSING_ARGSLENGHT==err) return "ERROR_MISSING_ARGSLENGHT";
+  if (ERROR_MISSING_ARGSLENGTH==err) return "ERROR_MISSING_ARGSLENGTH";
   if (ERROR_MISSING_COMMAND==err) return "ERROR_MISSING_COMMAND";
   if (ERROR_COMMAND_MISMATCH==err) return "ERROR_COMMAND_MISMATCH";
   if (ERROR_MISSING_ID==err) return "ERROR_MISSING_ID";
@@ -207,7 +207,40 @@ void TracerMPPT::_send(const uint8_t cmd, uint8_t* args, uint8_t argLen, uint8_t
   }
 }
 
+/** 
+ *  housekeeping for error logging
+ */
+
+uint16_t errorCounts[NUM_ERRORS]; //the number of occurances of various errors
+
+uint8_t TracerMPPT::_logAndThrowError(uint8_t err) {
+  if (errorCounts[err - MIN_ERROR_VALUE]<MAX_ERROR_COUNT) {
+    errorCounts[err - MIN_ERROR_VALUE]+=1;
+  }
+
+  return err;
+}
+
+uint16_t* TracerMPPT::getErrorCounts() {
+  return errorCounts;
+}
+
+uint8_t TracerMPPT::getTotalNumberOfErrorTypes() {
+  return NUM_ERRORS;
+}
+
+uint8_t TracerMPPT::getMinErrorValue() {
+  return MIN_ERROR_VALUE;
+}
+
+static uint32_t numReads = 0;
+
+uint32_t TracerMPPT::getTotalNumberOfReads() {
+  return numReads;
+}
+
 uint8_t TracerMPPT::_read(uint8_t expectedCmd, uint8_t* args, uint8_t* buf) {
+  numReads++;
 
   const int MAX_READ_TIMEOUT = 255;
   int readEffective = 0;
@@ -225,7 +258,7 @@ uint8_t TracerMPPT::_read(uint8_t expectedCmd, uint8_t* args, uint8_t* buf) {
     readTotalCnt++;
         
     if (-1 == c) {
-      return ERROR_MISSING_SYNC; //failiure to synchronize; should never occur here since serial->available() is a precondition
+      return _logAndThrowError(ERROR_MISSING_SYNC); //failiure to synchronize; should never occur here since serial->available() is a precondition
     }
 
     if (c == (char)COMM_SYNC[syncpos]) {
@@ -239,14 +272,14 @@ uint8_t TracerMPPT::_read(uint8_t expectedCmd, uint8_t* args, uint8_t* buf) {
   //check if we sync'ed or not, part 1
   if (!(mpptSerial->available())) {
     if (0==readTotalCnt) {
-      return ERROR_MPPT_NOT_FOUND;
+      return _logAndThrowError(ERROR_MPPT_NOT_FOUND);
     }
-    return ERROR_SYNC_FAILIURE;
+    return _logAndThrowError(ERROR_SYNC_FAILIURE);
   }
   
   //check if we sync'ed or not, part 2
   if (readTotalCnt >= MAX_READ_TIMEOUT) {
-    return ERROR_READ_TIMEOUT;
+    return _logAndThrowError(ERROR_READ_TIMEOUT);
   }
 
   uint8_t id;
@@ -257,7 +290,7 @@ uint8_t TracerMPPT::_read(uint8_t expectedCmd, uint8_t* args, uint8_t* buf) {
       buf[readEffective++]=id;  
     }
   } else {
-    return ERROR_MISSING_ID;
+    return _logAndThrowError(ERROR_MISSING_ID);
   }
 
   uint8_t cmd;
@@ -268,10 +301,10 @@ uint8_t TracerMPPT::_read(uint8_t expectedCmd, uint8_t* args, uint8_t* buf) {
         buf[readEffective++]=cmd;    
       }
      if (cmd != expectedCmd) {
-      return ERROR_COMMAND_MISMATCH;
+      return _logAndThrowError(ERROR_COMMAND_MISMATCH);
      }
   } else {
-    return ERROR_MISSING_COMMAND;
+    return _logAndThrowError(ERROR_MISSING_COMMAND);
   }
   
   char argsLen =0;
@@ -282,7 +315,7 @@ uint8_t TracerMPPT::_read(uint8_t expectedCmd, uint8_t* args, uint8_t* buf) {
       buf[readEffective++]=argsLen;  
     }
   } else {
-    return ERROR_MISSING_ARGSLENGHT;
+    return _logAndThrowError(ERROR_MISSING_ARGSLENGTH);
   }
 
   for (int i=0; i<argsLen && mpptSerial->available(); i++) {
@@ -291,7 +324,7 @@ uint8_t TracerMPPT::_read(uint8_t expectedCmd, uint8_t* args, uint8_t* buf) {
       buf[readEffective++]=args[i];
     }
     if (-1==args[i]) {
-      return ERROR_INCOMPLETE_ARGS; //timeout waiting for payload data
+      return _logAndThrowError(ERROR_INCOMPLETE_ARGS); //timeout waiting for payload data
     }
   }
 
@@ -314,7 +347,7 @@ uint8_t TracerMPPT::_read(uint8_t expectedCmd, uint8_t* args, uint8_t* buf) {
       buf[readEffective++]=crc[0];
     }
   } else {
-    return ERROR_MISSING_CRC1;
+    return _logAndThrowError(ERROR_MISSING_CRC1);
   }
 
   if (mpptSerial->available()) {
@@ -323,7 +356,7 @@ uint8_t TracerMPPT::_read(uint8_t expectedCmd, uint8_t* args, uint8_t* buf) {
       buf[readEffective++]=crc[1];
     }
   } else {
-    return ERROR_MISSING_CRC2;
+    return _logAndThrowError(ERROR_MISSING_CRC2);
   }
 
   if (mpptSerial->available()) {
@@ -332,22 +365,22 @@ uint8_t TracerMPPT::_read(uint8_t expectedCmd, uint8_t* args, uint8_t* buf) {
       buf[readEffective++]=terminator;
     }
     if (terminator != DATA_END[0]) {
-      return ERROR_INCORRECT_TERMINATOR;
+      return _logAndThrowError(ERROR_INCORRECT_TERMINATOR);
     }
   } else {
-    return ERROR_MISSING_TERMINATOR;
+    return _logAndThrowError(ERROR_MISSING_TERMINATOR);
   }
 
   uint16_t receivedCRC;
   _unpack(crc,&receivedCRC);
 
   if (expectedCRC!=receivedCRC) {
-    return ERROR_CRC_MISMATCH;
+    return _logAndThrowError(ERROR_CRC_MISMATCH);
   }
 
   if (_isError(argsLen)) {
     //if our result is in the range reserved for error codes
-    return ERROR_INDISTINGUISHABLE_FROM_ERROR;
+    return _logAndThrowError(ERROR_INDISTINGUISHABLE_FROM_ERROR);
   } else {
     return argsLen;
   }

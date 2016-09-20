@@ -8,6 +8,8 @@ const uint8_t CMD_READREALTIME = 0xA0;
 const uint8_t CMD_MANUALCONTROL = 0xAA;
 
 //errors. This error strategy is effective iff all possible results are below the final value of errorMinIndex, which is the case with the current Tracer protocol AFAIK.
+//NB: for functionality of the error logging and statistics to not break, errors must be continuous values, with the maximum value being 255.
+//NB2: in addition, make sure MIN_ERROR_VALUE is always equal to the lowest value;
 enum {
  ERROR_LENGTH_UNEXPECTED = 255,
  ERROR_INCORRECT_TERMINATOR = 254,// = errorMinIndex--;
@@ -16,7 +18,7 @@ enum {
  ERROR_MISSING_CRC2 = 251,// = errorMinIndex--;
  ERROR_MISSING_CRC1 = 250,// = errorMinIndex--;
  ERROR_INCOMPLETE_ARGS = 249,// = errorMinIndex--;
- ERROR_MISSING_ARGSLENGHT = 248,// = errorMinIndex--;
+ ERROR_MISSING_ARGSLENGTH = 248,// = errorMinIndex--;
  ERROR_MISSING_COMMAND = 247,// = errorMinIndex--;
  ERROR_COMMAND_MISMATCH = 246,// = errorMinIndex--;
  ERROR_MISSING_ID = 245,// = errorMinIndex--;
@@ -27,6 +29,10 @@ enum {
  ERROR_MPPT_NOT_FOUND = 240,
  MIN_ERROR_VALUE = 240
 };
+
+const uint8_t NUM_ERRORS = 255-MIN_ERROR_VALUE+1;
+
+const uint16_t MAX_ERROR_COUNT = 0xFFFF; 
 
 //communication
 const uint8_t CONTROLLER_ID = 0x16;
@@ -72,6 +78,10 @@ class TracerMPPT {
     void setLoad(bool on);
     void setLoad(bool on, ManualControlResult* result);
     void getRealtimeData(TracerData* data);
+    uint16_t* getErrorCounts();
+    uint8_t getTotalNumberOfErrorTypes();
+    uint8_t getMinErrorValue();
+    uint32_t getTotalNumberOfReads();
 
   private:
     bool _isError(uint8_t n);
@@ -83,7 +93,10 @@ class TracerMPPT {
     void _processRealTimeData(uint8_t* args, uint8_t cnt, TracerData* data);
     void _processManualControl(uint8_t* args, uint8_t cnt, ManualControlResult* result); 
     char* _errorToString(uint8_t err);
+    uint8_t _logAndThrowError(uint8_t err);
+
 };
+
 
 #endif
 
